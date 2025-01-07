@@ -1,0 +1,17 @@
+{
+  "name": "output-titan-india-clinic-profiles-0-sitemap",
+  "version": "1.0.0",
+  "main": "clinic.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "mongoose": "^8.9.3",
+    "puppeteer": "^23.11.1",
+    "xml2js": "^0.6.2"
+  }
+}
