@@ -618,7 +618,7 @@ async function processClinicUrlsFromXml(xmlFilePath) {
   try {
     xmlData = fs.readFileSync(xmlFilePath, "utf8");
   } catch (readError) {
-    console.error("Error reading XML file:", readError);
+    console.error(`Error reading XML file (${xmlFilePath}):`, readError);
     return;
   }
 
@@ -628,7 +628,7 @@ async function processClinicUrlsFromXml(xmlFilePath) {
     const parser = new xml2js.Parser({ strict: false, normalizeTags: true });
     parsedXml = await parser.parseStringPromise(xmlData);
   } catch (error) {
-    console.error("Failed to parse XML:", error);
+    console.error(`Failed to parse XML file (${xmlFilePath}):`, error);
     return;
   }
 
@@ -647,9 +647,11 @@ async function processClinicUrlsFromXml(xmlFilePath) {
     }
   }
 
-  console.log(`Found ${clinicUrls.size} clinic URLs to process.`);
+  console.log(
+    `Found ${clinicUrls.size} clinic URLs in ${xmlFilePath} to process.`
+  );
 
-  // Log each filtered clinic URL
+  // Log and process each filtered clinic URL
   for (const url of clinicUrls) {
     console.log(`Clinic URL: ${url}`);
     try {
@@ -659,44 +661,50 @@ async function processClinicUrlsFromXml(xmlFilePath) {
     }
   }
 
-  console.log("All clinic URLs have been logged.");
-}
-
-async function processRangeOfFiles(directoryPath, startIndex, endIndex) {
-  for (let i = startIndex; i <= endIndex; i++) {
-    const fileName = `titan-india-clinic-profiles-0-sitemap-${i}.xml`;
-    const filePath = path.join(directoryPath, fileName);
-
-    console.log(`Processing file: ${filePath}`);
-
-    try {
-      await processClinicUrlsFromXml(filePath);
-    } catch (error) {
-      console.error(`Error processing file ${filePath}:`, error);
-    }
-  }
+  console.log(`Finished processing file: ${xmlFilePath}`);
 }
 
 /************************************************************
  * Entry point
  ************************************************************/
-const directoryPath = process.argv[2];
-const startIndex = parseInt(process.argv[3], 10);
-const endIndex = parseInt(process.argv[4], 10);
+async function main() {
+  const baseFolder = "output-titan-india-clinic-profiles-0-sitemap";
+  const filePrefix = "titan-india-clinic-profiles-0-sitemap-";
+  const fileSuffix = ".xml";
 
-if (!directoryPath || isNaN(startIndex) || isNaN(endIndex)) {
-  console.error(
-    "Usage: node script.js <directoryPath> <startIndex> <endIndex>"
-  );
-  process.exit(1);
+  // Read range (start and end) from command-line arguments
+  const args = process.argv.slice(2);
+  if (args.length < 2) {
+    console.error("Please provide start and end numbers for the file range.");
+    console.error("Usage: node yourScript.js <start> <end>");
+    process.exit(1);
+  }
+
+  const start = parseInt(args[0], 10);
+  const end = parseInt(args[1], 10);
+
+  if (isNaN(start) || isNaN(end) || start > end) {
+    console.error(
+      "Invalid range provided. Ensure start and end are valid numbers with start <= end."
+    );
+    process.exit(1);
+  }
+
+  // Dynamically generate file paths based on the provided range
+  const xmlFilePaths = [];
+  for (let i = start; i <= end; i++) {
+    xmlFilePaths.push(`${baseFolder}/${filePrefix}${i}${fileSuffix}`);
+  }
+
+  for (const xmlFilePath of xmlFilePaths) {
+    await processClinicUrlsFromXml(xmlFilePath);
+  }
+
+  console.log("All files have been processed.");
+  process.exit(0);
 }
 
-processRangeOfFiles(directoryPath, startIndex, endIndex)
-  .then(() => {
-    console.log("All files processed successfully.");
-    process.exit(0);
-  })
-  .catch((err) => {
-    console.error("Unexpected error:", err);
-    process.exit(1);
-  });
+main().catch((err) => {
+  console.error("Unexpected error:", err);
+  process.exit(1);
+});
