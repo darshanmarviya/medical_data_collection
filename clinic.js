@@ -680,3 +680,14 @@ processClinicUrlsFromXml(xmlFilePath)
     console.error("Unexpected error:", err);
     process.exit(1);
   });
+
+
+  // async function runScrape() {
+  //   try {
+  //     await scrapeClinicDetail("https://www.practo.com/delhi/clinic/smayate-dental-clinics-greater-kailash-part-i");
+  //   } catch (error) {
+  //     console.error(`Error processing URL:`, error);
+  //   }
+  // }
+  
+  // runScrape();
