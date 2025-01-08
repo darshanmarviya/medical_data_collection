@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "clinic.js",
   "scripts": {
+    "start": "concurrently \"node clinicRange.js 66 70\" \"node clinicRange.js 106 110\" \"node clinicRange.js 111 115\" \"node clinicRange.js 116 120\"",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
