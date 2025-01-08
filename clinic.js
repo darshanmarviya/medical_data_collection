@@ -96,6 +96,33 @@ async function scrapeClinicOverview(page) {
           : null;
       };
 
+      const imageElements = Array.from(
+        document.querySelectorAll('img[data-qa-id="clinic-image"]')
+      );
+      const logo = imageElements.map((element) => ({
+        url: element.src.replace("/thumbnail", ""),
+        thumbnail: element.src,
+        alt: element.alt || "Hospital logo",
+      }));
+
+      // Extract the "Get Directions" URL
+      const directionsAnchor = document.querySelector(
+        'a[data-qa-id="get_directions"]'
+      );
+      let addressUrl = null;
+      if (directionsAnchor) {
+        addressUrl = directionsAnchor.href.trim();
+      }
+
+      // Extract clinic specialty headline
+      const specialityElement = document.querySelector(
+        'h2[data-qa-id="clinic-speciality"]'
+      );
+      let headline = null;
+      if (specialityElement) {
+        headline = specialityElement.textContent.trim();
+      }
+
       const getAllText = (selector) => {
         const elements = document.querySelectorAll(selector);
         return elements.length > 0
@@ -120,15 +147,15 @@ async function scrapeClinicOverview(page) {
 
       return {
         name: getText('h1[data-qa-id="clinic-name"]'),
-        headline: getText('h2[data-qa-id="clinic-speciality"]'),
+        headline: headline,
         rating: parseFloat(
           getText('div[data-qa-id="star_rating"] .common__star-rating__value')
         ),
         feedback: getText('span[data-qa-id="clinic-votes"]'),
         area: getText('h2[data-qa-id="clinic-locality"]'),
         address: getText('p[data-qa-id="clinic-address"]'),
-        logo: getImageData('img[data-qa-id="clinic-image"]'),
-        addressUrl: getHref('a[data-qa-id="get_directions"]'),
+        logo: logo,
+        addressUrl: addressUrl,
         about: getText("p.c-profile__description"),
         timings_day: getText('p[data-qa-id="clinic-timings-day"]'),
         timings_session: getAllText('p[data-qa-id="clinic-timings-session"]'),
@@ -583,17 +610,9 @@ async function scrapeClinicDetail(url) {
     }
 
     // Check for image selector
-    const imageSelector = 'img[data-qa-id="doctor-clinics-photo"]';
-    try {
-      await page.waitForSelector(imageSelector, { timeout: 3000 });
-      console.log("Doctor clinic photo image is available.");
-      // Perform actions related to the image here
-      const clinicImages = await scrapeClinicPhotos(url);
-      const photos = clinicImages ? clinicImages.clinicPhotos : [];
-      clinicInstance.photos = photos.length ? photos : clinicInstance.photos;
-    } catch (error) {
-      console.warn("Doctor clinic photo image not found within 3000ms.");
-    }
+    const clinicImages = await scrapeClinicPhotos(url);
+    const photos = clinicImages ? clinicImages.clinicPhotos : [];
+    clinicInstance.photos = photos.length ? photos : clinicInstance.photos;
 
     try {
       await clinicInstance.save();
@@ -612,82 +631,83 @@ async function scrapeClinicDetail(url) {
   }
 }
 
-async function processClinicUrlsFromXml(xmlFilePath) {
-  // Read XML file
-  let xmlData;
-  try {
-    xmlData = fs.readFileSync(xmlFilePath, "utf8");
-  } catch (readError) {
-    console.error("Error reading XML file:", readError);
-    return;
-  }
+// async function processClinicUrlsFromXml(xmlFilePath) {
+//   // Read XML file
+//   let xmlData;
+//   try {
+//     xmlData = fs.readFileSync(xmlFilePath, "utf8");
+//   } catch (readError) {
+//     console.error("Error reading XML file:", readError);
+//     return;
+//   }
 
-  // Parse XML to JS object with less strict settings
-  let parsedXml;
+//   // Parse XML to JS object with less strict settings
+//   let parsedXml;
+//   try {
+//     const parser = new xml2js.Parser({ strict: false, normalizeTags: true });
+//     parsedXml = await parser.parseStringPromise(xmlData);
+//   } catch (error) {
+//     console.error("Failed to parse XML:", error);
+//     return;
+//   }
+
+//   // Extract clinic URLs
+//   const clinicUrls = new Set();
+//   const urlEntries = (parsedXml.urlset && parsedXml.urlset.url) || [];
+//   for (const entry of urlEntries) {
+//     if (entry.loc && Array.isArray(entry.loc) && entry.loc[0]) {
+//       const url = entry.loc[0];
+//       const match = url.match(
+//         /^https:\/\/www\.practo\.com\/[^\/]+\/clinic\/[^\/]+$/
+//       );
+//       if (match) {
+//         clinicUrls.add(url);
+//       }
+//     }
+//   }
+
+//   console.log(`Found ${clinicUrls.size} clinic URLs to process.`);
+
+//   // Log each filtered clinic URL
+//   for (const url of clinicUrls) {
+//     console.log(`Clinic URL: ${url}`);
+//     try {
+//       await scrapeClinicDetail(url);
+//     } catch (error) {
+//       console.error(`Error processing ${url}:`, error);
+//     }
+//   }
+
+//   console.log("All clinic URLs have been logged.");
+// }
+
+// /************************************************************
+//  * Entry point
+//  ************************************************************/
+// const xmlFilePath = process.argv[2];
+// if (!xmlFilePath) {
+//   console.error("Please provide the XML file path as a command-line argument.");
+//   process.exit(1);
+// }
+
+// processClinicUrlsFromXml(xmlFilePath)
+//   .then(() => {
+//     console.log("Script completed.");
+//     process.exit(0);
+//   })
+//   .catch((err) => {
+//     console.error("Unexpected error:", err);
+//     process.exit(1);
+//   });
+
+async function runScrape() {
   try {
-    const parser = new xml2js.Parser({ strict: false, normalizeTags: true });
-    parsedXml = await parser.parseStringPromise(xmlData);
+    await scrapeClinicDetail(
+      "https://www.practo.com/ahmedabad/clinic/pearl-dental-care-gota-1?referrer=clinic_listing"
+    );
   } catch (error) {
-    console.error("Failed to parse XML:", error);
-    return;
+    console.error(`Error processing URL:`, error);
   }
-
-  // Extract clinic URLs
-  const clinicUrls = new Set();
-  const urlEntries = (parsedXml.urlset && parsedXml.urlset.url) || [];
-  for (const entry of urlEntries) {
-    if (entry.loc && Array.isArray(entry.loc) && entry.loc[0]) {
-      const url = entry.loc[0];
-      const match = url.match(
-        /^https:\/\/www\.practo\.com\/[^\/]+\/clinic\/[^\/]+$/
-      );
-      if (match) {
-        clinicUrls.add(url);
-      }
-    }
-  }
-
-  console.log(`Found ${clinicUrls.size} clinic URLs to process.`);
-
-  // Log each filtered clinic URL
-  for (const url of clinicUrls) {
-    console.log(`Clinic URL: ${url}`);
-    try {
-      await scrapeClinicDetail(url);
-    } catch (error) {
-      console.error(`Error processing ${url}:`, error);
-    }
-  }
-
-  console.log("All clinic URLs have been logged.");
 }
 
-/************************************************************
- * Entry point
- ************************************************************/
-const xmlFilePath = process.argv[2];
-if (!xmlFilePath) {
-  console.error("Please provide the XML file path as a command-line argument.");
-  process.exit(1);
-}
-
-processClinicUrlsFromXml(xmlFilePath)
-  .then(() => {
-    console.log("Script completed.");
-    process.exit(0);
-  })
-  .catch((err) => {
-    console.error("Unexpected error:", err);
-    process.exit(1);
-  });
-
-
-  // async function runScrape() {
-  //   try {
-  //     await scrapeClinicDetail("https://www.practo.com/delhi/clinic/smayate-dental-clinics-greater-kailash-part-i");
-  //   } catch (error) {
-  //     console.error(`Error processing URL:`, error);
-  //   }
-  // }
-  
-  // runScrape();
+runScrape();
