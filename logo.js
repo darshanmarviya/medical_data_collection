@@ -192,8 +192,12 @@ async function updateClinic(clinicId, data, clinicUrl) {
 
 // Main execution flow
 async function main() {
-  const startIndex = 2; // Set your desired start index
-  const endIndex = 10; // Set your desired end index (non-inclusive)
+  const args = process.argv.slice(2);
+
+  // Parse the first argument as startIndex, second as endIndex
+  // Provide default values if arguments are not provided or invalid
+  const startIndex = parseInt(args[0], 10);
+  const endIndex = parseInt(args[1], 10);
   try {
     await mongoose.connect(
       "mongodb+srv://medipractinfo:cFcK1u7cdJACr2Dk@medipract.vpxxvy1.mongodb.net/medipractweb",
