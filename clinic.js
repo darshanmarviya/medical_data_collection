@@ -36,26 +36,59 @@ const Doctor = mongoose.model("Doctor", doctorSchema, "doctors");
 
 const clinicSchema = new mongoose.Schema({
   name: String,
-  doctorIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "Doctor" }],
+  headline: String,
   rating: Number,
   feedback: String,
-  services: [String],
-  faqs: [
+  area: String,
+  address: String,
+
+  // Inline object for logo
+  logo: {
+    url: String,
+    thumbnail: String,
+    alt: String,
+  },
+
+  addressUrl: String,
+  about: String,
+  timings_day: String,
+  timings_session: String,
+
+  // Array of strings for breadcrumbs
+  breadcrumbs: [String],
+
+  city: String,
+
+  // Array of doctors (subdocuments inlined)
+  doctors: [
     {
-      question: String,
-      answer: String,
+      doctorProfileUrl: String,
+      name: String,
+      specialization: String,
+      experience: String,
+      fee: String,
+      timings: String,
     },
   ],
+
+  // Array of services (strings)
+  services: [String],
+
+  // Array of photos (subdocuments inlined)
   photos: [
     {
       url: String,
       alt: String,
     },
   ],
-  area: String,
-  address: String,
-  city: String,
-  about: String,
+
+  // Array of FAQs (subdocuments inlined)
+  faqs: [
+    {
+      question: String,
+      answer: String,
+    },
+  ],
 });
 const Clinic = mongoose.model("Clinic", clinicSchema, "clinics");
 
@@ -77,97 +110,105 @@ function delay(time) {
 /************************************************************
  * 5. Scrape Clinic Overview
  ************************************************************/
-async function scrapeClinicOverview(page) {
+async function scrapeClinicOverview(url) {
+  let browser;
   try {
-    return await page.evaluate(() => {
-      const getText = (selector) => {
-        const element = document.querySelector(selector);
-        return element ? element.innerText.trim() : "N/A";
-      };
-
-      const getImageData = (selector) => {
-        const element = document.querySelector(selector);
-        return element
-          ? {
-              url: element.src.replace("/thumbnail", ""),
-              thumbnail: element.src,
-              alt: element.alt || "Hospital logo",
-            }
-          : null;
-      };
-
-      const imageElements = Array.from(
-        document.querySelectorAll('img[data-qa-id="clinic-image"]')
-      );
-      const logo = imageElements.map((element) => ({
-        url: element.src.replace("/thumbnail", ""),
-        thumbnail: element.src,
-        alt: element.alt || "Hospital logo",
-      }));
-
-      // Extract the "Get Directions" URL
-      const directionsAnchor = document.querySelector(
-        'a[data-qa-id="get_directions"]'
-      );
-      let addressUrl = null;
-      if (directionsAnchor) {
-        addressUrl = directionsAnchor.href.trim();
-      }
-
-      // Extract clinic specialty headline
-      const specialityElement = document.querySelector(
-        'h2[data-qa-id="clinic-speciality"]'
-      );
-      let headline = null;
-      if (specialityElement) {
-        headline = specialityElement.textContent.trim();
-      }
-
-      const getAllText = (selector) => {
-        const elements = document.querySelectorAll(selector);
-        return elements.length > 0
-          ? Array.from(elements)
-              .map((el) => el.innerText.trim())
-              .join("\n")
-          : "N/A";
-      };
-
-      const getHref = (selector) => {
-        const element = document.querySelector(selector);
-        return element ? element.href : null;
-      };
-
-      const breadcrumbs = Array.from(
-        document.querySelectorAll("a.c-breadcrumb__title")
-      )
-        .map((el) => el?.innerText.trim())
-        .filter((text) => text.length > 0);
-
-      const city = breadcrumbs.length > 1 ? breadcrumbs[1] : "";
-
-      return {
-        name: getText('h1[data-qa-id="clinic-name"]'),
-        headline: headline,
-        rating: parseFloat(
-          getText('div[data-qa-id="star_rating"] .common__star-rating__value')
-        ),
-        feedback: getText('span[data-qa-id="clinic-votes"]'),
-        area: getText('h2[data-qa-id="clinic-locality"]'),
-        address: getText('p[data-qa-id="clinic-address"]'),
-        logo: logo,
-        addressUrl: addressUrl,
-        about: getText("p.c-profile__description"),
-        timings_day: getText('p[data-qa-id="clinic-timings-day"]'),
-        timings_session: getAllText('p[data-qa-id="clinic-timings-session"]'),
-        breadcrumbs,
-        city,
-      };
+    // 1) Launch Puppeteer WITHOUT a forced 3s timeout
+    //    (Removing `timeout: 3000` to avoid "Timed out after 3000 ms" errors)
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ["--no-sandbox"],
     });
+
+    const page = await browser.newPage();
+
+    // 2) Increase the navigation timeout to e.g. 10 seconds
+    try {
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 10000 });
+    } catch (navError) {
+      console.error(`Navigation error for URL: ${url} - ${navError.message}`);
+      return null; // Stop if navigation fails
+    }
+
+    // 3) Wait for a specific element that indicates the page has loaded
+    //    (Adjust selector and timeout as needed)
+    await page.waitForSelector('h1[data-qa-id="clinic-name"]', {
+      timeout: 8000,
+    });
+
+    // 4) Scrape data by evaluating the DOM
+    const scrapedData = await page.evaluate(() => {
+        const imageElements = document.querySelectorAll('img[data-qa-id="clinic-image"]');
+        const logo = Array.from(imageElements).map((img) => ({
+          url: img.src.replace("/thumbnail", ""),
+          thumbnail: img.src,
+          alt: img.alt || "Hospital logo",
+        }));
+      
+        // Extract values from the page
+        const name = document.querySelector('h1[data-qa-id="clinic-name"]')?.innerText.trim() || "N/A";
+        const rating = parseFloat(document.querySelector('div[data-qa-id="star_rating"] .common__star-rating__value')?.innerText.trim() || "0");
+        const feedback = document.querySelector('span[data-qa-id="clinic-votes"]')?.innerText.trim() || "N/A";
+        const area = document.querySelector('h2[data-qa-id="clinic-locality"]')?.innerText.trim() || "N/A";
+        const address = document.querySelector('p[data-qa-id="clinic-address"]')?.innerText.trim() || "N/A";
+      
+        // "Get Directions" URL
+        const addressUrl = document.querySelector('a[data-qa-id="get_directions"]')?.href.trim() || "N/A";
+      
+        // Headline
+        const headline = document.querySelector('h2[data-qa-id="summary_title"]')?.innerText.trim() || "N/A";
+      
+        // Timings
+        const timings_day = document.querySelector('p[data-qa-id="clinic-timings-day"]')?.innerText.trim() || "N/A";
+        
+        // Extract multiple session timings and join with newlines
+        const timingsSessionElements = document.querySelectorAll('p[data-qa-id="clinic-timings-session"]');
+        const timings_session = timingsSessionElements.length 
+          ? Array.from(timingsSessionElements).map(el => el.innerText.trim()).join("\n")
+          : "N/A";
+      
+        // About text
+        const about = document.querySelector("p.c-profile__description")?.innerText.trim() || "N/A";
+      
+        // Breadcrumbs and City extraction
+        const breadcrumbElements = Array.from(document.querySelectorAll("a.c-breadcrumb__title"))
+          .map((el) => el.innerText.trim())
+          .filter((text) => text.length > 0);
+        const breadcrumbs = breadcrumbElements;
+        const city = breadcrumbs.length > 1 ? breadcrumbs[1] : "";
+      
+        // Return collected data
+        return {
+          name,
+          headline,
+          rating,
+          feedback,
+          area,
+          address,
+          logo,
+          addressUrl,
+          about,
+          timings_day,
+          timings_session,
+          breadcrumbs,
+          city,
+        };
+    });
+
+    console.log("Scraped data:", scrapedData);
+    return scrapedData;
   } catch (err) {
-    logError(`Error in scrapeClinicOverview: ${err.message}`);
-    return {}; // Return an empty object on failure
+    console.error("Error in getDataFromUrl:", err);
+    return null;
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
   }
 }
+
+
+
 
 /************************************************************
  * 6. Scrape Doctors (with Mongoose logic for matching)
@@ -179,17 +220,17 @@ async function scrapeDoctors(page, clinicInstance) {
     // Use a 3000 ms timeout for waiting on selectors
     await page.waitForSelector('a[href*="doctors"]', {
       visible: true,
-      timeout: 3000,
+      timeout: 5000,
     });
     const doctorsTabSelector = 'li[data-qa-id="doctors-tab"] button';
     await page.waitForSelector(doctorsTabSelector, {
       visible: true,
-      timeout: 3000,
+      timeout: 5000,
     });
     await page.click(doctorsTabSelector);
 
     await page.waitForSelector('div[data-qa-id="doctor_card_default"]', {
-      timeout: 3000,
+      timeout: 5000,
     });
 
     while (true) {
@@ -201,11 +242,11 @@ async function scrapeDoctors(page, clinicInstance) {
 
         await Promise.all([
           page.waitForResponse((response) => response.status() === 200, {
-            timeout: 3000,
+            timeout: 5000,
           }),
           loadMoreButton.click(),
         ]);
-        await page.waitForTimeout(1000);
+        await page.waitForTimeout(2000);
       } catch (err) {
         logError(`Error clicking load more doctors: ${err.message}`);
         break;
@@ -555,24 +596,31 @@ async function scrapeClinicDetail(url) {
       return;
     }
 
-    const clinicOverview = await scrapeClinicOverview(page);
-    clinicInstance.name = clinicOverview.name || clinicInstance.name;
-    clinicInstance.rating = clinicOverview.rating || clinicInstance.rating;
-    clinicInstance.feedback =
-      clinicOverview.feedback || clinicInstance.feedback;
-    clinicInstance.area = clinicOverview.area || clinicInstance.area;
-    clinicInstance.address = clinicOverview.address || clinicInstance.address;
-    clinicInstance.city = clinicOverview.city || clinicInstance.city;
-    clinicInstance.about = clinicOverview.about || clinicInstance.about;
+    const clinicOverview = await scrapeClinicOverview(url);
+    // Assign each field from `clinicOverview` to `clinicInstance` only if the scraped value is truthy.
+    clinicInstance.name            = clinicOverview.name            || clinicInstance.name;
+    clinicInstance.headline        = clinicOverview.headline        || clinicInstance.headline;
+    clinicInstance.rating          = clinicOverview.rating          || clinicInstance.rating;
+    clinicInstance.feedback        = clinicOverview.feedback        || clinicInstance.feedback;
+    clinicInstance.area            = clinicOverview.area            || clinicInstance.area;
+    clinicInstance.address         = clinicOverview.address         || clinicInstance.address;
+    clinicInstance.logo            = clinicOverview.logo            || clinicInstance.logo;
+    clinicInstance.addressUrl      = clinicOverview.addressUrl      || clinicInstance.addressUrl;
+    clinicInstance.about           = clinicOverview.about           || clinicInstance.about;
+    clinicInstance.timings_day     = clinicOverview.timings_day     || clinicInstance.timings_day;
+    clinicInstance.timings_session = clinicOverview.timings_session || clinicInstance.timings_session;
+    clinicInstance.breadcrumbs     = clinicOverview.breadcrumbs     || clinicInstance.breadcrumbs;
+    clinicInstance.city            = clinicOverview.city            || clinicInstance.city;
+    console.log(clinicOverview.logo)
 
     const doctorsTabSelector = 'li[data-qa-id="doctors-tab"] button';
     try {
-      await page.waitForSelector(doctorsTabSelector, { timeout: 3000 });
+      await page.waitForSelector(doctorsTabSelector, { timeout: 12000 });
       console.log("Doctors tab is available.");
       // Perform actions related to doctors tab here
       await scrapeDoctors(page, clinicInstance);
     } catch (error) {
-      console.warn("Doctors tab not found within 3000ms.");
+      console.warn("Doctors tab not found within 12000ms.");
     }
 
     // Check for services tab buttons existence using querySelectorAll
@@ -614,12 +662,13 @@ async function scrapeClinicDetail(url) {
     const photos = clinicImages ? clinicImages.clinicPhotos : [];
     clinicInstance.photos = photos.length ? photos : clinicInstance.photos;
 
-    try {
-      await clinicInstance.save();
-      console.log("Clinic instance saved for:", url);
-    } catch (saveError) {
-      logError(`Error saving clinic instance for ${url}: ${saveError.message}`);
-    }
+    console.log(clinicInstance)
+    // try {
+    //   await clinicInstance.save();
+    //   console.log("Clinic instance saved for:", url);
+    // } catch (saveError) {
+    //   logError(`Error saving clinic instance for ${url}: ${saveError.message}`);
+    // }
 
     return clinicInstance;
   } catch (error) {
@@ -703,7 +752,7 @@ async function scrapeClinicDetail(url) {
 async function runScrape() {
   try {
     await scrapeClinicDetail(
-      "https://www.practo.com/ahmedabad/clinic/pearl-dental-care-gota-1?referrer=clinic_listing"
+      "https://www.practo.com/kolkata/clinic/dental-earth-multispecialty-clinic-and-implant-centre-new-town"
     );
   } catch (error) {
     console.error(`Error processing URL:`, error);

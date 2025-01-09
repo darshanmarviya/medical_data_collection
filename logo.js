@@ -8,8 +8,6 @@ const ClinicSchema = new mongoose.Schema({
   logo: Array,
   addressUrl: String,
   headline: String,
-  clinicName: String,
-  photos: Array,
   // other fields...
 });
 const Clinic = mongoose.model("Clinic", ClinicSchema);
@@ -22,27 +20,67 @@ const DoctorSchema = new mongoose.Schema({
 const Doctor = mongoose.model("Doctor", DoctorSchema);
 
 // Retrieve doctor URIs for a given clinic ID
+// async function getDoctorUrisForClinic(clinicId) {
+//   try {
+//     await mongoose.connect(
+//       "mongodb+srv://medipractinfo:cFcK1u7cdJACr2Dk@medipract.vpxxvy1.mongodb.net/medipractweb",
+//       { tls: true }
+//     );
+
+//     const clinic = await Clinic.findById(clinicId).populate("doctorIds").exec();
+//     if (!clinic) {
+//       console.log("Clinic not found");
+//       return [];
+//     }
+
+//     return clinic.doctorIds.map((doctor) => doctor.uri);
+//   } catch (error) {
+//     console.error("Error connecting to MongoDB:", error);
+//     return [];
+//   } finally {
+//     await mongoose.disconnect();
+//   }
+// }
+
+// Remove connect/disconnect from getDoctorUrisForClinic
 async function getDoctorUrisForClinic(clinicId) {
   try {
-    await mongoose.connect(
-      "mongodb+srv://medipractinfo:cFcK1u7cdJACr2Dk@medipract.vpxxvy1.mongodb.net/medipractweb",
-      { tls: true }
-    );
-
     const clinic = await Clinic.findById(clinicId).populate("doctorIds").exec();
     if (!clinic) {
       console.log("Clinic not found");
       return [];
     }
-
     return clinic.doctorIds.map((doctor) => doctor.uri);
   } catch (error) {
-    console.error("Error connecting to MongoDB:", error);
+    console.error("Error finding clinic in MongoDB:", error);
     return [];
-  } finally {
-    await mongoose.disconnect();
   }
 }
+
+// Remove connect/disconnect from updateClinic
+async function updateClinic(clinicId, data, clinicUrl) {
+  try {
+
+    //     // --- Newly Added Snippet for Scraping Clinic Photos ---
+    const clinicImages = await scrapeClinicPhotos(clinicUrl);
+    const photos = clinicImages ? clinicImages.clinicPhotos : [];
+    // If you have a clinicInstance or want to assign to data, adjust accordingly:
+    data.photos = photos.length ? photos : data.photos || [];
+    // ------------------------------------------------------
+    console.log(data);    
+
+    // 2) Actually update the DB
+    const updatedClinic = await Clinic.findByIdAndUpdate(
+      clinicId, 
+      { $set: data }, 
+      { new: true }
+    );
+    console.log("Updated clinic:", updatedClinic);
+  } catch (error) {
+    console.error("Error updating clinic in MongoDB:", error);
+  }
+}
+
 
 // Scrape clinic name and URL from a doctor's page
 async function scrapeClinicDetails(url) {
@@ -165,73 +203,114 @@ async function scrapeClinicPhotos(url) {
     }
   }
 }
+function logError(message) {
+  // Your custom logging logic
+  console.error(message);
+}
 
 // Update the clinic document in MongoDB with scraped data
-async function updateClinic(clinicId, data, clinicUrl) {
-  // <-- Accept clinicUrl as a parameter
-  try {
-    await mongoose.connect(
-      "mongodb+srv://medipractinfo:cFcK1u7cdJACr2Dk@medipract.vpxxvy1.mongodb.net/medipractweb",
-      { tls: true }
-    );
+// async function updateClinic(clinicId, data, clinicUrl) {
+//   // <-- Accept clinicUrl as a parameter
+//   try {
+//     await mongoose.connect(
+//       "mongodb+srv://medipractinfo:cFcK1u7cdJACr2Dk@medipract.vpxxvy1.mongodb.net/medipractweb",
+//       { tls: true }
+//     );
 
-    // --- Newly Added Snippet for Scraping Clinic Photos ---
-    const clinicImages = await scrapeClinicPhotos(clinicUrl);
-    const photos = clinicImages ? clinicImages.clinicPhotos : [];
-    // If you have a clinicInstance or want to assign to data, adjust accordingly:
-    data.photos = photos.length ? photos : data.photos || [];
-    // ------------------------------------------------------
-    console.log(data);
-    //await Clinic.findByIdAndUpdate(clinicId, { $set: data }, { new: true });
+//     // --- Newly Added Snippet for Scraping Clinic Photos ---
+//     const clinicImages = await scrapeClinicPhotos(clinicUrl);
+//     const photos = clinicImages ? clinicImages.clinicPhotos : [];
+//     // If you have a clinicInstance or want to assign to data, adjust accordingly:
+//     data.photos = photos.length ? photos : data.photos || [];
+//     // ------------------------------------------------------
+//     console.log(data);
+//     await Clinic.findByIdAndUpdate(clinicId, { $set: data }, { new: true });
+//   } catch (error) {
+//     //console.error("Error updating clinic in MongoDB:", error);
+//   } finally {
+//     await mongoose.disconnect();
+//   }
+// }
+
+// Remove connect/disconnect from getDoctorUrisForClinic
+async function getDoctorUrisForClinic(clinicId) {
+  try {
+    const clinic = await Clinic.findById(clinicId).populate("doctorIds").exec();
+    if (!clinic) {
+      console.log("Clinic not found");
+      return [];
+    }
+    return clinic.doctorIds.map((doctor) => doctor.uri);
   } catch (error) {
-    //console.error("Error updating clinic in MongoDB:", error);
-  } finally {
-    await mongoose.disconnect();
+    console.error("Error finding clinic in MongoDB:", error);
+    return [];
   }
 }
 
-// Main execution flow
-async function main() {
-  const args = process.argv.slice(2);
-
-  // Parse the first argument as startIndex, second as endIndex
-  // Provide default values if arguments are not provided or invalid
-  const startIndex = parseInt(args[0], 10);
-  const endIndex = parseInt(args[1], 10);
+// Remove connect/disconnect from updateClinic
+async function updateClinic(clinicId, data, clinicUrl) {
   try {
+    // 1) Optionally: scrape photos here (but do NOT connect/disconnect again)
+    const clinicImages = await scrapeClinicPhotos(clinicUrl);
+    const photos = clinicImages ? clinicImages.clinicPhotos : [];
+    data.photos = photos.length ? photos : data.photos || [];
+
+    // 2) Actually update the DB
+    const updatedClinic = await Clinic.findByIdAndUpdate(
+      clinicId, 
+      { $set: data }, 
+      { new: true }
+    );
+    console.log("Updated clinic:", updatedClinic);
+  } catch (error) {
+    console.error("Error updating clinic in MongoDB:", error);
+  }
+}
+
+
+async function main() {
+  const [startIndexStr, endIndexStr] = process.argv.slice(2);
+  const startIndex = parseInt(startIndexStr, 10);
+  const endIndex = parseInt(endIndexStr, 10);
+  let currentClinicId;
+
+  try {
+    // Connect once at the beginning
     await mongoose.connect(
       "mongodb+srv://medipractinfo:cFcK1u7cdJACr2Dk@medipract.vpxxvy1.mongodb.net/medipractweb",
       { tls: true }
     );
 
-    // Fetch clinics within the specified range
+    // Fetch clinics
     const clinics = await Clinic.find()
       .skip(startIndex)
       .limit(endIndex - startIndex)
       .exec();
-    for (const clinic of clinics) {
-      console.log(clinic._id);
-      const clinicId = clinic._id; // Replace with actual Clinic ID
-      const doctorUris = await getDoctorUrisForClinic(clinicId);
-      const fullDoctorUrls = doctorUris.map((uri) =>
-        uri.startsWith("http") ? uri : `https://www.practo.com/${uri}`
-      );
-      for (const url of fullDoctorUrls) {
-        // Scrape basic clinic details from doctor's page
-        const details = await scrapeClinicDetails(url);
-        if (!details.clinicUrl) {
-          console.error(`Could not find clinic details from ${url}`);
-          continue;
-        }
-        // Use the clinic URL from details to scrape images, directions, etc.
-        const clinicData = await scrapeImagesAndDirections(details.clinicUrl);
 
-        // Update the clinic document in the database with the scraped data
-        await updateClinic(clinicId, clinicData, details.clinicUrl);
+    // Process each clinic
+    for (const clinic of clinics) {
+      currentClinicId = clinic._id;
+      console.log("Processing clinic:", clinic._id);
+
+      const doctorUris = await getDoctorUrisForClinic(clinic._id);
+      const details = await scrapeClinicDetails(
+        `https://www.practo.com/${doctorUris}`
+      );
+
+      let clinicData = {};
+      if (details.clinicUrl) {
+        clinicData = await scrapeImagesAndDirections(details.clinicUrl);
+        console.log("Scraped data for clinic:", clinicData);
       }
+
+      // Perform the DB update
+      await updateClinic(clinic._id, clinicData, details.clinicUrl);
     }
   } catch (err) {
-    console.error(`Error processing ${url}:`, err);
+    console.error(`Error processing clinic ${currentClinicId}:`, err);
+  } finally {
+    // Disconnect once after all operations are done
+    await mongoose.disconnect();
   }
 }
 
