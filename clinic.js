@@ -43,12 +43,15 @@ const clinicSchema = new mongoose.Schema({
   address: String,
 
   // Inline object for logo
-  logo: {
-    url: String,
-    thumbnail: String,
-    alt: String,
-  },
+  logo: [
+    {
+      url: String,
+      thumbnail: String,
+      alt: String,
+    },
+  ],
 
+  clinicUrl: String,
   addressUrl: String,
   about: String,
   timings_day: String,
@@ -60,14 +63,23 @@ const clinicSchema = new mongoose.Schema({
   city: String,
 
   // Array of doctors (subdocuments inlined)
-  doctors: [
+  // doctors: [
+  //   {
+  //     doctorProfileUrl: String,
+  //     name: String,
+  //     specialization: String,
+  //     experience: String,
+  //     fee: String,
+  //     timings: String,
+  //   },
+  // ],
+
+  // Array of mongoose ObjectIds for doctors
+  doctorIds: [
     {
-      doctorProfileUrl: String,
-      name: String,
-      specialization: String,
-      experience: String,
-      fee: String,
-      timings: String,
+      type: mongoose.Schema.Types.ObjectId,
+      // Optionally, you can add a reference if these IDs correspond to another collection, e.g.:
+      // ref: 'Doctor'
     },
   ],
 
@@ -90,6 +102,7 @@ const clinicSchema = new mongoose.Schema({
     },
   ],
 });
+
 const Clinic = mongoose.model("Clinic", clinicSchema, "clinics");
 
 /************************************************************
@@ -114,7 +127,7 @@ async function scrapeClinicOverview(url) {
   let browser;
   try {
     // 1) Launch Puppeteer WITHOUT a forced 3s timeout
-    //    (Removing `timeout: 3000` to avoid "Timed out after 3000 ms" errors)
+    //    (Removing `timeout: 15000` to avoid "Timed out after 15000 ms" errors)
     browser = await puppeteer.launch({
       headless: true,
       args: ["--no-sandbox"],
@@ -138,64 +151,100 @@ async function scrapeClinicOverview(url) {
 
     // 4) Scrape data by evaluating the DOM
     const scrapedData = await page.evaluate(() => {
-        const imageElements = document.querySelectorAll('img[data-qa-id="clinic-image"]');
-        const logo = Array.from(imageElements).map((img) => ({
-          url: img.src.replace("/thumbnail", ""),
-          thumbnail: img.src,
-          alt: img.alt || "Hospital logo",
-        }));
-      
-        // Extract values from the page
-        const name = document.querySelector('h1[data-qa-id="clinic-name"]')?.innerText.trim() || "N/A";
-        const rating = parseFloat(document.querySelector('div[data-qa-id="star_rating"] .common__star-rating__value')?.innerText.trim() || "0");
-        const feedback = document.querySelector('span[data-qa-id="clinic-votes"]')?.innerText.trim() || "N/A";
-        const area = document.querySelector('h2[data-qa-id="clinic-locality"]')?.innerText.trim() || "N/A";
-        const address = document.querySelector('p[data-qa-id="clinic-address"]')?.innerText.trim() || "N/A";
-      
-        // "Get Directions" URL
-        const addressUrl = document.querySelector('a[data-qa-id="get_directions"]')?.href.trim() || "N/A";
-      
-        // Headline
-        const headline = document.querySelector('h2[data-qa-id="summary_title"]')?.innerText.trim() || "N/A";
-      
-        // Timings
-        const timings_day = document.querySelector('p[data-qa-id="clinic-timings-day"]')?.innerText.trim() || "N/A";
-        
-        // Extract multiple session timings and join with newlines
-        const timingsSessionElements = document.querySelectorAll('p[data-qa-id="clinic-timings-session"]');
-        const timings_session = timingsSessionElements.length 
-          ? Array.from(timingsSessionElements).map(el => el.innerText.trim()).join("\n")
-          : "N/A";
-      
-        // About text
-        const about = document.querySelector("p.c-profile__description")?.innerText.trim() || "N/A";
-      
-        // Breadcrumbs and City extraction
-        const breadcrumbElements = Array.from(document.querySelectorAll("a.c-breadcrumb__title"))
-          .map((el) => el.innerText.trim())
-          .filter((text) => text.length > 0);
-        const breadcrumbs = breadcrumbElements;
-        const city = breadcrumbs.length > 1 ? breadcrumbs[1] : "";
-      
-        // Return collected data
-        return {
-          name,
-          headline,
-          rating,
-          feedback,
-          area,
-          address,
-          logo,
-          addressUrl,
-          about,
-          timings_day,
-          timings_session,
-          breadcrumbs,
-          city,
-        };
+      const imageElements = document.querySelectorAll(
+        'img[data-qa-id="clinic-image"]'
+      );
+      const logo = Array.from(imageElements).map((img) => ({
+        url: img.src.replace("/thumbnail", ""),
+        thumbnail: img.src,
+        alt: img.alt || "Hospital logo",
+      }));
+
+      // Extract values from the page
+      const name =
+        document
+          .querySelector('h1[data-qa-id="clinic-name"]')
+          ?.innerText.trim() || "N/A";
+      const rating = parseFloat(
+        document
+          .querySelector(
+            'div[data-qa-id="star_rating"] .common__star-rating__value'
+          )
+          ?.innerText.trim() || "0"
+      );
+      const feedback =
+        document
+          .querySelector('span[data-qa-id="clinic-votes"]')
+          ?.innerText.trim() || "N/A";
+      const area =
+        document
+          .querySelector('h2[data-qa-id="clinic-locality"]')
+          ?.innerText.trim() || "N/A";
+      const address =
+        document
+          .querySelector('p[data-qa-id="clinic-address"]')
+          ?.innerText.trim() || "N/A";
+
+      // "Get Directions" URL
+      const addressUrl =
+        document.querySelector('a[data-qa-id="get_directions"]')?.href.trim() ||
+        "N/A";
+
+      // Headline
+      const headline =
+        document
+          .querySelector('h2[data-qa-id="summary_title"]')
+          ?.innerText.trim() || "N/A";
+
+      // Timings
+      const timings_day =
+        document
+          .querySelector('p[data-qa-id="clinic-timings-day"]')
+          ?.innerText.trim() || "N/A";
+
+      // Extract multiple session timings and join with newlines
+      const timingsSessionElements = document.querySelectorAll(
+        'p[data-qa-id="clinic-timings-session"]'
+      );
+      const timings_session = timingsSessionElements.length
+        ? Array.from(timingsSessionElements)
+            .map((el) => el.innerText.trim())
+            .join("\n")
+        : "N/A";
+
+      // About text
+      const about =
+        document.querySelector("p.c-profile__description")?.innerText.trim() ||
+        "N/A";
+
+      // Breadcrumbs and City extraction
+      const breadcrumbElements = Array.from(
+        document.querySelectorAll("a.c-breadcrumb__title")
+      )
+        .map((el) => el.innerText.trim())
+        .filter((text) => text.length > 0);
+      const breadcrumbs = breadcrumbElements;
+      const city = breadcrumbs.length > 1 ? breadcrumbs[1] : "";
+
+      // Return collected data
+      return {
+        name,
+        headline,
+        rating,
+        feedback,
+        area,
+        address,
+        logo,
+        addressUrl,
+        about,
+        timings_day,
+        timings_session,
+        breadcrumbs,
+        city,
+      };
     });
 
-    console.log("Scraped data:", scrapedData);
+    // console.log("Scraped data:", scrapedData);
     return scrapedData;
   } catch (err) {
     console.error("Error in getDataFromUrl:", err);
@@ -207,9 +256,6 @@ async function scrapeClinicOverview(url) {
   }
 }
 
-
-
-
 /************************************************************
  * 6. Scrape Doctors (with Mongoose logic for matching)
  ************************************************************/
@@ -217,7 +263,7 @@ async function scrapeDoctors(page, clinicInstance) {
   const doctorsData = [];
 
   try {
-    // Use a 3000 ms timeout for waiting on selectors
+    // Use a 15000 ms timeout for waiting on selectors
     await page.waitForSelector('a[href*="doctors"]', {
       visible: true,
       timeout: 5000,
@@ -367,10 +413,10 @@ async function scrapeIndividualDoctorProfile(doctorProfileUrl) {
     docBrowser = await puppeteer.launch({
       headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
-      timeout: 3000,
+      timeout: 15000,
     });
     docPage = await docBrowser.newPage();
-    await docPage.setDefaultNavigationTimeout(3000);
+    await docPage.setDefaultNavigationTimeout(15000);
     await docPage.goto(doctorProfileUrl, { waitUntil: "domcontentloaded" });
 
     dataToReturn = await docPage.evaluate(() => {
@@ -413,7 +459,7 @@ async function scrapeServices(page) {
       await Promise.all([
         page.waitForNavigation({
           waitUntil: "domcontentloaded",
-          timeout: 3000,
+          timeout: 15000,
         }),
         serviceTab.asElement().click(),
       ]);
@@ -428,7 +474,7 @@ async function scrapeServices(page) {
       if (viewAllButton) {
         await Promise.all([
           page.waitForSelector('div[data-qa-id="services-item"]', {
-            timeout: 3000,
+            timeout: 15000,
           }),
           viewAllButton.asElement().click(),
         ]);
@@ -473,7 +519,7 @@ async function scrapeQuestions(page) {
     const questionsTabSelector = "li[data-qa-id='questions-tab'] button";
     await page.waitForSelector(questionsTabSelector, {
       visible: true,
-      timeout: 3000,
+      timeout: 15000,
     });
 
     const questionsTab = await page.evaluateHandle(() => {
@@ -487,13 +533,13 @@ async function scrapeQuestions(page) {
       await Promise.all([
         page.waitForNavigation({
           waitUntil: "domcontentloaded",
-          timeout: 3000,
+          timeout: 15000,
         }),
         questionsTab.asElement().click(),
       ]);
 
       await page.waitForSelector("div[data-qa-id='faq-section']", {
-        timeout: 3000,
+        timeout: 15000,
       });
 
       questionsAndAnswers.push(
@@ -531,16 +577,16 @@ async function scrapeClinicPhotos(url) {
     browser = await puppeteer.launch({
       headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
-      timeout: 3000,
+      timeout: 15000,
     });
     const page = await browser.newPage();
-    await page.setDefaultNavigationTimeout(3000);
+    await page.setDefaultNavigationTimeout(15000);
     await page.goto(url, { waitUntil: "domcontentloaded" });
 
     const firstImageSelector = 'img[data-qa-id="doctor-clinics-photo"]';
-    await page.waitForSelector(firstImageSelector, { timeout: 3000 });
+    await page.waitForSelector(firstImageSelector, { timeout: 15000 });
     await page.click(firstImageSelector);
-    await delay(3000);
+    await delay(15000);
 
     const clinicPhotos = await page.evaluate(() => {
       return Array.from(
@@ -573,13 +619,13 @@ async function scrapeClinicDetail(url) {
     browser = await puppeteer.launch({
       headless: true,
       args: ["--no-sandbox"],
-      timeout: 3000,
+      timeout: 15000,
     });
     const page = await browser.newPage();
-    await page.setDefaultNavigationTimeout(3000);
+    page.setDefaultNavigationTimeout(15000);
 
     try {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 3000 });
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 15000 });
     } catch (navError) {
       const message = `Navigation error for URL: ${url} - ${navError.message}`;
       console.error(message);
@@ -598,20 +644,25 @@ async function scrapeClinicDetail(url) {
 
     const clinicOverview = await scrapeClinicOverview(url);
     // Assign each field from `clinicOverview` to `clinicInstance` only if the scraped value is truthy.
-    clinicInstance.name            = clinicOverview.name            || clinicInstance.name;
-    clinicInstance.headline        = clinicOverview.headline        || clinicInstance.headline;
-    clinicInstance.rating          = clinicOverview.rating          || clinicInstance.rating;
-    clinicInstance.feedback        = clinicOverview.feedback        || clinicInstance.feedback;
-    clinicInstance.area            = clinicOverview.area            || clinicInstance.area;
-    clinicInstance.address         = clinicOverview.address         || clinicInstance.address;
-    clinicInstance.logo            = clinicOverview.logo            || clinicInstance.logo;
-    clinicInstance.addressUrl      = clinicOverview.addressUrl      || clinicInstance.addressUrl;
-    clinicInstance.about           = clinicOverview.about           || clinicInstance.about;
-    clinicInstance.timings_day     = clinicOverview.timings_day     || clinicInstance.timings_day;
-    clinicInstance.timings_session = clinicOverview.timings_session || clinicInstance.timings_session;
-    clinicInstance.breadcrumbs     = clinicOverview.breadcrumbs     || clinicInstance.breadcrumbs;
-    clinicInstance.city            = clinicOverview.city            || clinicInstance.city;
-    console.log(clinicOverview.logo)
+    clinicInstance.name = clinicOverview.name || clinicInstance.name;
+    clinicInstance.headline =
+      clinicOverview.headline || clinicInstance.headline;
+    clinicInstance.rating = clinicOverview.rating || clinicInstance.rating;
+    clinicInstance.feedback =
+      clinicOverview.feedback || clinicInstance.feedback;
+    clinicInstance.area = clinicOverview.area || clinicInstance.area;
+    clinicInstance.address = clinicOverview.address || clinicInstance.address;
+    clinicInstance.logo = clinicOverview.logo || clinicInstance.logo;
+    clinicInstance.addressUrl =
+      clinicOverview.addressUrl || clinicInstance.addressUrl;
+    clinicInstance.about = clinicOverview.about || clinicInstance.about;
+    clinicInstance.timings_day =
+      clinicOverview.timings_day || clinicInstance.timings_day;
+    clinicInstance.timings_session =
+      clinicOverview.timings_session || clinicInstance.timings_session;
+    clinicInstance.breadcrumbs =
+      clinicOverview.breadcrumbs || clinicInstance.breadcrumbs;
+    clinicInstance.city = clinicOverview.city || clinicInstance.city;    
 
     const doctorsTabSelector = 'li[data-qa-id="doctors-tab"] button';
     try {
@@ -629,7 +680,7 @@ async function scrapeClinicDetail(url) {
         () =>
           document.querySelectorAll("li[data-qa-id='services-tab'] button")
             .length > 0,
-        { timeout: 3000 }
+        { timeout: 15000 }
       );
       console.log("Services tab buttons are available.");
       // Perform actions related to services tab here
@@ -638,7 +689,7 @@ async function scrapeClinicDetail(url) {
         ? services
         : clinicInstance.services;
     } catch (error) {
-      console.warn("Services tab buttons not found within 3000ms.");
+      console.warn("Services tab buttons not found within 15000ms.");
     }
 
     // Check for serviceElements
@@ -647,28 +698,30 @@ async function scrapeClinicDetail(url) {
         () =>
           document.querySelectorAll('div[data-qa-id="services-item"]').length >
           0,
-        { timeout: 3000 }
+        { timeout: 15000 }
       );
       console.log("Service elements are available.");
       // Perform actions related to service elements here
       const faqs = await scrapeQuestions(page);
       clinicInstance.faqs = faqs.length ? faqs : clinicInstance.faqs;
     } catch (error) {
-      console.warn("Service elements not found within 3000ms.");
+      console.warn("Service elements not found within 15000ms.");
     }
 
+    clinicInstance.clinicUrl = "";
     // Check for image selector
     const clinicImages = await scrapeClinicPhotos(url);
     const photos = clinicImages ? clinicImages.clinicPhotos : [];
     clinicInstance.photos = photos.length ? photos : clinicInstance.photos;
+    clinicInstance.clinicUrl = url.replace("https://www.practo.com/","");
 
-    console.log(clinicInstance)
-    // try {
-    //   await clinicInstance.save();
-    //   console.log("Clinic instance saved for:", url);
-    // } catch (saveError) {
-    //   logError(`Error saving clinic instance for ${url}: ${saveError.message}`);
-    // }
+    // console.log(clinicInstance);
+    try {
+      await clinicInstance.save();
+      console.log("Clinic instance saved for:", url);
+    } catch (saveError) {
+      logError(`Error saving clinic instance for ${url}: ${saveError.message}`);
+    }
 
     return clinicInstance;
   } catch (error) {
@@ -680,83 +733,73 @@ async function scrapeClinicDetail(url) {
   }
 }
 
-// async function processClinicUrlsFromXml(xmlFilePath) {
-//   // Read XML file
-//   let xmlData;
-//   try {
-//     xmlData = fs.readFileSync(xmlFilePath, "utf8");
-//   } catch (readError) {
-//     console.error("Error reading XML file:", readError);
-//     return;
-//   }
-
-//   // Parse XML to JS object with less strict settings
-//   let parsedXml;
-//   try {
-//     const parser = new xml2js.Parser({ strict: false, normalizeTags: true });
-//     parsedXml = await parser.parseStringPromise(xmlData);
-//   } catch (error) {
-//     console.error("Failed to parse XML:", error);
-//     return;
-//   }
-
-//   // Extract clinic URLs
-//   const clinicUrls = new Set();
-//   const urlEntries = (parsedXml.urlset && parsedXml.urlset.url) || [];
-//   for (const entry of urlEntries) {
-//     if (entry.loc && Array.isArray(entry.loc) && entry.loc[0]) {
-//       const url = entry.loc[0];
-//       const match = url.match(
-//         /^https:\/\/www\.practo\.com\/[^\/]+\/clinic\/[^\/]+$/
-//       );
-//       if (match) {
-//         clinicUrls.add(url);
-//       }
-//     }
-//   }
-
-//   console.log(`Found ${clinicUrls.size} clinic URLs to process.`);
-
-//   // Log each filtered clinic URL
-//   for (const url of clinicUrls) {
-//     console.log(`Clinic URL: ${url}`);
-//     try {
-//       await scrapeClinicDetail(url);
-//     } catch (error) {
-//       console.error(`Error processing ${url}:`, error);
-//     }
-//   }
-
-//   console.log("All clinic URLs have been logged.");
-// }
-
-// /************************************************************
-//  * Entry point
-//  ************************************************************/
-// const xmlFilePath = process.argv[2];
-// if (!xmlFilePath) {
-//   console.error("Please provide the XML file path as a command-line argument.");
-//   process.exit(1);
-// }
-
-// processClinicUrlsFromXml(xmlFilePath)
-//   .then(() => {
-//     console.log("Script completed.");
-//     process.exit(0);
-//   })
-//   .catch((err) => {
-//     console.error("Unexpected error:", err);
-//     process.exit(1);
-//   });
-
-async function runScrape() {
+async function processClinicUrlsFromXml(xmlFilePath) {
+  // Read XML file
+  let xmlData;
   try {
-    await scrapeClinicDetail(
-      "https://www.practo.com/kolkata/clinic/dental-earth-multispecialty-clinic-and-implant-centre-new-town"
-    );
-  } catch (error) {
-    console.error(`Error processing URL:`, error);
+    xmlData = fs.readFileSync(xmlFilePath, "utf8");
+  } catch (readError) {
+    console.error("Error reading XML file:", readError);
+    return;
   }
+
+  // Parse XML to JS object with less strict settings
+  let parsedXml;
+  try {
+    const parser = new xml2js.Parser({ strict: false, normalizeTags: true });
+    parsedXml = await parser.parseStringPromise(xmlData);
+  } catch (error) {
+    console.error("Failed to parse XML:", error);
+    return;
+  }
+
+  // Extract clinic URLs
+  const clinicUrls = new Set();
+  const urlEntries = (parsedXml.urlset && parsedXml.urlset.url) || [];
+  for (const entry of urlEntries) {
+    if (entry.loc && Array.isArray(entry.loc) && entry.loc[0]) {
+      const url = entry.loc[0];
+      const match = url.match(
+        /^https:\/\/www\.practo\.com\/[^\/]+\/clinic\/[^\/]+$/
+      );
+      if (match) {
+        clinicUrls.add(url);
+      }
+    }
+  }
+
+  console.log(`Found ${clinicUrls.size} clinic URLs to process.`);
+
+  // Log each filtered clinic URL
+  for (const url of clinicUrls) {
+    console.log(`Clinic URL: ${url}`);
+    try {
+      await scrapeClinicDetail(url);
+    } catch (error) {
+      console.error(`Error processing ${url}:`, error);
+    }
+  }
+
+  console.log("All clinic URLs have been logged.");
 }
 
-runScrape();
+/************************************************************
+ * Entry point
+ ************************************************************/
+const xmlFilePath = process.argv[2];
+if (!xmlFilePath) {
+  console.error("Please provide the XML file path as a command-line argument.");
+  process.exit(1);
+}
+
+processClinicUrlsFromXml(xmlFilePath)
+  .then(() => {
+    console.log("Script completed.");
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error("Unexpected error:", err);
+    process.exit(1);
+  });
+
+

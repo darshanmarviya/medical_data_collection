@@ -51,6 +51,7 @@ const clinicSchema = new mongoose.Schema({
     },
   ],
 
+  clinicUrl: String,
   addressUrl: String,
   about: String,
   timings_day: String,
@@ -243,7 +244,7 @@ async function scrapeClinicOverview(url) {
       };
     });
 
-    console.log("Scraped data:", scrapedData);
+    // console.log("Scraped data:", scrapedData);
     return scrapedData;
   } catch (err) {
     console.error("Error in getDataFromUrl:", err);
@@ -661,8 +662,7 @@ async function scrapeClinicDetail(url) {
       clinicOverview.timings_session || clinicInstance.timings_session;
     clinicInstance.breadcrumbs =
       clinicOverview.breadcrumbs || clinicInstance.breadcrumbs;
-    clinicInstance.city = clinicOverview.city || clinicInstance.city;
-    console.log(clinicOverview.logo);
+    clinicInstance.city = clinicOverview.city || clinicInstance.city;    
 
     const doctorsTabSelector = 'li[data-qa-id="doctors-tab"] button';
     try {
@@ -708,18 +708,20 @@ async function scrapeClinicDetail(url) {
       console.warn("Service elements not found within 15000ms.");
     }
 
+    clinicInstance.clinicUrl = "";
     // Check for image selector
     const clinicImages = await scrapeClinicPhotos(url);
     const photos = clinicImages ? clinicImages.clinicPhotos : [];
     clinicInstance.photos = photos.length ? photos : clinicInstance.photos;
+    clinicInstance.clinicUrl = url.replace("https://www.practo.com/","");
 
-    console.log(clinicInstance);
-    // try {
-    //   await clinicInstance.save();
-    //   console.log("Clinic instance saved for:", url);
-    // } catch (saveError) {
-    //   logError(`Error saving clinic instance for ${url}: ${saveError.message}`);
-    // }
+    // console.log(clinicInstance);
+    try {
+      await clinicInstance.save();
+      console.log("Clinic instance saved for:", url);
+    } catch (saveError) {
+      logError(`Error saving clinic instance for ${url}: ${saveError.message}`);
+    }
 
     return clinicInstance;
   } catch (error) {
