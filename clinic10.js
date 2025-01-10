@@ -16,7 +16,7 @@ function logError(message, url = "") {
  * 1. Mongoose Connection Setup
  ************************************************************/
 const MONGODB_URI =
-  "mongodb+srv://iwellnessai:SwxrM8w5eSGppWKS@medipract.vpxxvy1.mongodb.net/medipractweb_hospital"; // Update to your DB URI
+  "mongodb+srv://iwellnessai:SwxrM8w5eSGppWKS@cluster0.gh31p.mongodb.net/medipractweb_hospital"; // Update to your DB URI
 
 mongoose.connect(MONGODB_URI).catch((err) => {
   console.error("MongoDB connection error:", err);

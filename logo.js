@@ -282,9 +282,10 @@ async function main() {
     );
 
     // Fetch clinics
-    const clinics = await Clinic.find()
-      .skip(startIndex)
-      .limit(endIndex - startIndex)
+    const clinics = await Clinic.find({
+      logo: { $exists: false },
+      clinicUrl: { $exists: false }
+    })
       .exec();
 
     // Process each clinic
