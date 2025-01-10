@@ -662,7 +662,7 @@ async function scrapeClinicDetail(url) {
       clinicOverview.timings_session || clinicInstance.timings_session;
     clinicInstance.breadcrumbs =
       clinicOverview.breadcrumbs || clinicInstance.breadcrumbs;
-    clinicInstance.city = clinicOverview.city || clinicInstance.city;    
+    clinicInstance.city = clinicOverview.city || clinicInstance.city;
 
     const doctorsTabSelector = 'li[data-qa-id="doctors-tab"] button';
     try {
@@ -713,7 +713,7 @@ async function scrapeClinicDetail(url) {
     const clinicImages = await scrapeClinicPhotos(url);
     const photos = clinicImages ? clinicImages.clinicPhotos : [];
     clinicInstance.photos = photos.length ? photos : clinicInstance.photos;
-    clinicInstance.clinicUrl = url.replace("https://www.practo.com/","");
+    clinicInstance.clinicUrl = url.replace("https://www.practo.com/", "");
 
     // console.log(clinicInstance);
     try {
@@ -733,9 +733,60 @@ async function scrapeClinicDetail(url) {
   }
 }
 
+// async function processClinicUrlsFromXml(xmlFilePath) {
+//   // Read XML file
+//   let xmlData;
+//   try {
+//     xmlData = fs.readFileSync(xmlFilePath, "utf8");
+//   } catch (readError) {
+//     console.error("Error reading XML file:", readError);
+//     return;
+//   }
+
+//   // Parse XML to JS object with less strict settings
+//   let parsedXml;
+//   try {
+//     const parser = new xml2js.Parser({ strict: false, normalizeTags: true });
+//     parsedXml = await parser.parseStringPromise(xmlData);
+//   } catch (error) {
+//     console.error("Failed to parse XML:", error);
+//     return;
+//   }
+
+//   // Extract clinic URLs
+//   const clinicUrls = new Set();
+//   const urlEntries = (parsedXml.urlset && parsedXml.urlset.url) || [];
+//   for (const entry of urlEntries) {
+//     if (entry.loc && Array.isArray(entry.loc) && entry.loc[0]) {
+//       const url = entry.loc[0];
+//       const match = url.match(
+//         /^https:\/\/www\.practo\.com\/[^\/]+\/clinic\/[^\/]+$/
+//       );
+//       if (match) {
+//         clinicUrls.add(url);
+//       }
+//     }
+//   }
+
+//   console.log(`Found ${clinicUrls.size} clinic URLs to process.`);
+
+//   // Log each filtered clinic URL
+//   for (const url of clinicUrls) {
+//     console.log(`Clinic URL: ${url}`);
+//     try {
+//       await scrapeClinicDetail(url);
+//     } catch (error) {
+//       console.error(`Error processing ${url}:`, error);
+//     }
+//   }
+
+//   console.log("All clinic URLs have been logged.");
+// }
+
 async function processClinicUrlsFromXml(xmlFilePath) {
-  // Read XML file
   let xmlData;
+
+  // 1) Read XML file
   try {
     xmlData = fs.readFileSync(xmlFilePath, "utf8");
   } catch (readError) {
@@ -743,7 +794,7 @@ async function processClinicUrlsFromXml(xmlFilePath) {
     return;
   }
 
-  // Parse XML to JS object with less strict settings
+  // 2) Parse XML to JS object (less strict settings)
   let parsedXml;
   try {
     const parser = new xml2js.Parser({ strict: false, normalizeTags: true });
@@ -753,14 +804,14 @@ async function processClinicUrlsFromXml(xmlFilePath) {
     return;
   }
 
-  // Extract clinic URLs
+  // 3) Extract clinic URLs
   const clinicUrls = new Set();
   const urlEntries = (parsedXml.urlset && parsedXml.urlset.url) || [];
   for (const entry of urlEntries) {
     if (entry.loc && Array.isArray(entry.loc) && entry.loc[0]) {
       const url = entry.loc[0];
       const match = url.match(
-        /^https:\/\/www\.practo\.com\/[^\/]+\/clinic\/[^\/]+$/
+        /^https:\/\/www\.practo\.com\/[^/]+\/clinic\/[^/]+$/
       );
       if (match) {
         clinicUrls.add(url);
@@ -770,17 +821,49 @@ async function processClinicUrlsFromXml(xmlFilePath) {
 
   console.log(`Found ${clinicUrls.size} clinic URLs to process.`);
 
-  // Log each filtered clinic URL
+  // 4) Connect to MongoDB with Mongoose
+  try {
+    await mongoose.connect(MONGODB_URI);
+    console.log("Connected to MongoDB via Mongoose");
+  } catch (err) {
+    console.error("MongoDB connection error:", err);
+    // If desired, log to an error-logging service
+    // logError(`MongoDB connection error: ${err.message}`);
+    return; // if you cannot connect, stop here
+  }
+
+  // 5) Check existing clinic URLs before scraping
   for (const url of clinicUrls) {
     console.log(`Clinic URL: ${url}`);
     try {
-      await scrapeClinicDetail(url);
+      // Check if this clinic URL already exists
+      const existingClinic = await Clinic.findOne({
+        clinicUrl: url.replace("https://www.practo.com/", ""),
+      });
+
+      if (!existingClinic) {
+        // If not found, scrape clinic details
+        await scrapeClinicDetail(url);
+      } else {
+        console.log(
+          `Clinic with URL "${url}" already exists in the database. Skipping...`
+        );
+      }
     } catch (error) {
       console.error(`Error processing ${url}:`, error);
     }
   }
 
-  console.log("All clinic URLs have been logged.");
+  console.log("All clinic URLs have been checked and processed.");
+
+  // 6) (Optional) Close the Mongoose connection if you are done
+  //    If your application continues running (e.g., server), you may keep it open.
+  try {
+    await mongoose.disconnect();
+    console.log("Mongoose connection closed.");
+  } catch (err) {
+    console.error("Error closing Mongoose connection:", err);
+  }
 }
 
 /************************************************************
@@ -801,5 +884,3 @@ processClinicUrlsFromXml(xmlFilePath)
     console.error("Unexpected error:", err);
     process.exit(1);
   });
-
-
