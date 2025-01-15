@@ -52,6 +52,13 @@ const hospitalSchema = new mongoose.Schema({
 });
 const Hospital = mongoose.model("Hospital", hospitalSchema);
 
+const doctorSchema = new mongoose.Schema({
+  title: String, // Doctor's name
+  specialization: [String],
+  uri: String,
+});
+const Doctor = mongoose.model("Doctor", doctorSchema, "doctors");
+
 /************************************************************
  * 3. Scraping Functions
  ************************************************************/
@@ -61,6 +68,56 @@ const Hospital = mongoose.model("Hospital", hospitalSchema);
  * @param {puppeteer.Page} page
  * @returns {Object} Hospital Overview Data
  */
+// async function scrapeHospitalOverview(page) {
+//   try {
+//     return await page.evaluate(() => {
+//       const getText = (selector) => {
+//         const element = document.querySelector(selector);
+//         return element ? element.innerText.trim() : null;
+//       };
+
+//       const getHref = (selector) => {
+//         const element = document.querySelector(selector);
+//         return element ? element.href : null;
+//       };
+
+//       const getImageData = (selector) => {
+//         const element = document.querySelector(selector);
+//         return element
+//           ? {
+//               url: element.src.replace("/thumbnail", ""),
+//               thumbnail: element.src,
+//               alt: element.alt || "Hospital logo",
+//             }
+//           : null;
+//       };
+
+//       return {
+//         name: getText('span[data-qa-id="hospital_name"]'),
+//         address: getText('p[data-qa-id="address_body"]'),
+//         area: getText('h2[data-qa-id="hospital-locality"]'),
+//         headline: getText('h2[data-qa-id="hospital_speciality"]'),
+//         doctor_count: getText('h2[data-qa-id="doctor_count"]'),
+//         image: getImageData('img[data-qa-id="logo"]'),
+//         about: getText("p.c-profile__description"),
+//         addressUrl: getHref('a[data-qa-id="get_directions"]'),
+//         timings_day: getText('p[data-qa-id="clinic-timings-day"]'),
+//         timing_session: getText('p[data-qa-id="clinic-timings-session"]'),
+//         payment_modes: getText('p[data-qa-id="payment_modes_body"]'),
+//       };
+//     });
+//   } catch (error) {
+//     console.error("Error in scrapeHospitalOverview:", error);
+//     logError(`scrapeHospitalOverview Error: ${error.message}`);
+//     return {};
+//   }
+// }
+
+function getUriFromUrl(fullUrl) {
+  const splitted = fullUrl.split("practo.com");
+  return splitted[1] || "";
+}
+
 async function scrapeHospitalOverview(page) {
   try {
     return await page.evaluate(() => {
@@ -85,7 +142,8 @@ async function scrapeHospitalOverview(page) {
           : null;
       };
 
-      return {
+      // Extract hospital overview details
+      const overview = {
         name: getText('span[data-qa-id="hospital_name"]'),
         address: getText('p[data-qa-id="address_body"]'),
         area: getText('h2[data-qa-id="hospital-locality"]'),
@@ -98,10 +156,51 @@ async function scrapeHospitalOverview(page) {
         timing_session: getText('p[data-qa-id="clinic-timings-session"]'),
         payment_modes: getText('p[data-qa-id="payment_modes_body"]'),
       };
+
+      // Extract doctors details
+      const doctorElements = document.querySelectorAll(
+        'div[data-qa-id="doctor_card_default"]'
+      );
+      const doctors = Array.from(doctorElements).map((doctor) => {
+        // Extract raw profile URL
+        let rawUrl = doctor.querySelector("div.c-card-info a")?.href || null;
+        // Remove the "https://www.practo.com/" prefix if present
+        const doctorProfileUrl = rawUrl
+          ? rawUrl.replace("https://www.practo.com/", "")
+          : null;
+
+        return {
+          name:
+            doctor
+              .querySelector('h2[data-qa-id="doctor_name"]')
+              ?.innerText.trim() || null,
+          specialization:
+            doctor
+              .querySelector('h3[data-qa-id="doctor_specialisation"]')
+              ?.innerText.trim() || null,
+          experience:
+            doctor
+              .querySelector('h3[data-qa-id="doctor_experience"]')
+              ?.innerText.trim() || null,
+          fee:
+            doctor
+              .querySelector('span[data-qa-id="consultation_fee"]')
+              ?.innerText.trim() || null,
+          timings:
+            doctor
+              .querySelector('span[data-qa-id="doctor_visit_timings"]')
+              ?.innerText.trim() || null,
+          doctorProfileUrl, // Use the modified URL
+        };
+      });
+      // Combine overview and doctors array
+      return {
+        ...overview,
+        doctors,
+      };
     });
   } catch (error) {
     console.error("Error in scrapeHospitalOverview:", error);
-    logError(`scrapeHospitalOverview Error: ${error.message}`);
     return {};
   }
 }
@@ -398,19 +497,31 @@ async function scrapeHospitalPhotos(url) {
     console.log(`Navigating to URL: ${url}`);
     await page.goto(url, { waitUntil: "domcontentloaded" });
 
-    // Wait for the first image to load
+    // Wait for the first image to load gracefully
     const firstImageSelector = 'img[data-qa-id="doctor-clinics-photo"]';
     console.log("Waiting for the first image...");
-    await page.waitForSelector(firstImageSelector, { timeout: 30000 });
+
+    try {
+      await page.waitForSelector(firstImageSelector, { timeout: 30000 });
+    } catch (waitError) {
+      console.log("No clinic photos found on the page.");
+      return { hospitalPhotos: [] }; // Return empty photos gracefully
+    }
 
     // Click on the first image to open the gallery
     console.log("Clicking the first image...");
     await page.click(firstImageSelector);
 
-    // Wait for the high-resolution images in the gallery to load
+    // Wait for the high-resolution images in the gallery to load gracefully
     const highResSelector = "img.c-carousel--item__large";
     console.log("Waiting for high-resolution images...");
-    await page.waitForSelector(highResSelector, { timeout: 30000 });
+
+    try {
+      await page.waitForSelector(highResSelector, { timeout: 15000 });
+    } catch (highResError) {
+      console.log("High-resolution images not found.");
+      return { hospitalPhotos: [] }; // Return empty photos gracefully
+    }
 
     // Extract all high-resolution image URLs and alt texts
     const hospitalPhotos = await page.evaluate(() => {
@@ -422,11 +533,10 @@ async function scrapeHospitalPhotos(url) {
       }));
     });
 
-    // console.log("Extracted photos:", hospitalPhotos);
     return { hospitalPhotos };
   } catch (error) {
     console.error(`Error in scrapeHospitalPhotos for ${url}:`, error);
-    return null;
+    return { hospitalPhotos: [] }; // Return an empty structure on error
   } finally {
     if (browser) {
       await browser.close();
@@ -434,11 +544,62 @@ async function scrapeHospitalPhotos(url) {
   }
 }
 
+// async function scrapeHospitalPhotos(url) {
+//   let browser;
+//   try {
+//     browser = await puppeteer.launch({
+//       headless: true,
+//       args: ["--no-sandbox", "--disable-setuid-sandbox"],
+//       timeout: 30000,
+//     });
+
+//     const page = await browser.newPage();
+//     await page.setDefaultNavigationTimeout(30000);
+//     console.log(`Navigating to URL: ${url}`);
+//     await page.goto(url, { waitUntil: "domcontentloaded" });
+
+//     // Wait for the first image to load
+//     const firstImageSelector = 'img[data-qa-id="doctor-clinics-photo"]';
+//     console.log("Waiting for the first image...");
+//     await page.waitForSelector(firstImageSelector, { timeout: 30000 });
+
+//     // Click on the first image to open the gallery
+//     console.log("Clicking the first image...");
+//     await page.click(firstImageSelector);
+
+//     // Wait for the high-resolution images in the gallery to load
+//     const highResSelector = "img.c-carousel--item__large";
+//     console.log("Waiting for high-resolution images...");
+//     await page.waitForSelector(highResSelector, { timeout: 30000 });
+
+//     // Extract all high-resolution image URLs and alt texts
+//     const hospitalPhotos = await page.evaluate(() => {
+//       return Array.from(
+//         document.querySelectorAll("img.c-carousel--item__large")
+//       ).map((img) => ({
+//         url: img.src,
+//         alt: img.alt || "N/A",
+//       }));
+//     });
+
+//     // console.log("Extracted photos:", hospitalPhotos);
+//     return { hospitalPhotos };
+//   } catch (error) {
+//     console.error(`Error in scrapeHospitalPhotos for ${url}:`, error);
+//     return null;
+//   } finally {
+//     if (browser) {
+//       await browser.close();
+//     }
+//   }
+// }
+
 /**
  * Scrape Details for a Single Hospital
  * @param {string} url Hospital URL
  * @returns {Object|null} Scraped Hospital Details or null if failed
  */
+
 async function scrapeHospitalDetails(url) {
   let browser;
   let hospitalDetails = null;
@@ -451,21 +612,75 @@ async function scrapeHospitalDetails(url) {
     await page.setDefaultNavigationTimeout(60000);
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
 
-    const overview = await scrapeHospitalOverview(page);
+    // Scrape hospital overview including doctors
+    const scrapedData = await scrapeHospitalOverview(page);
+    const { doctors: doctors, ...overview } = scrapedData;
 
-    // Conditional check for doctors
-    let doctors = [];
-    try {
-      const doctorsTabExists = await page.$('a[href*="doctors"]');
-      if (doctorsTabExists) {
-        doctors = await scrapeDoctors(page);
-      } else {
-        console.warn("Doctors tab not found on hospital page.");
-        logError("Doctors tab not found.", url);
+    // Process each doctor from the scraped data
+    for (const doc of doctors) {
+      if (!doc.name || !doc.specialization) {
+        continue;
       }
-    } catch (error) {
-      console.error("Error during doctors scraping:", error);
-      logError(`Doctors scraping error: ${error.message}`, url);
+
+      console.log("Processing doctor:", doc.name);
+
+      let foundDoctor;
+      try {
+        foundDoctor = await Doctor.findOne({
+          title: {
+            $regex: `^${doc.name.trim()}$`,
+            $options: "i",
+          },
+          specialization: {
+            $elemMatch: {
+              $regex: `${doc.specialization.trim()}`,
+              $options: "i",
+            },
+          },
+        });
+      } catch (err) {
+        logError(`Error querying doctor ${doc.name}: ${err.message}`);
+        continue;
+      }
+
+      if (foundDoctor) {
+        // Update URI if needed
+        if (doc.doctorProfileUrl) {
+          const partialUri = getUriFromUrl(doc.doctorProfileUrl);
+          foundDoctor.uri = partialUri;
+        }
+        try {
+          await foundDoctor.save();
+        } catch (err) {
+          logError(`Error saving doctor ${doc.name}: ${err.message}`);
+        }
+        console.log(
+          `Matched existing doctor: ${doc.name}. Updated URI, added to clinic.`
+        );
+      } else {
+        console.log(
+          `Doctor not found: ${doc.name}. Scraping additional data...`
+        );
+        try {
+          const newDoc = new Doctor({
+            title: doc.name,
+            specialization: [doc.specialization],
+            uri: doc.doctorProfileUrl
+              ? getUriFromUrl(doc.doctorProfileUrl)
+              : undefined,
+            ...newDoctorDetails,
+          });
+
+          await newDoc.save();
+          console.log(`New doctor added to 'doctors' collection: ${doc.name}`);
+        } catch (err) {
+          logError(
+            `Error scraping or saving new doctor profile for ${doc.name}: ${err.message}`
+          );
+        }
+      }
+      // Optionally, collect data if needed
+      // doctorsData.push(doc);
     }
 
     // Conditional check for stories
@@ -508,6 +723,11 @@ async function scrapeHospitalDetails(url) {
 
     // Conditional check for photos
     let photos = [];
+    // const hasPhotos =
+    //   (await page.$('img[data-qa-id="doctor-clinics-photo"]')) !== null;
+    // if (hasPhotos) {
+    //   photos = await scrapeHospitalPhotos(url);
+    // }
     photos = await scrapeHospitalPhotos(url);
 
     hospitalDetails = {
@@ -679,7 +899,7 @@ processHospitalUrlsFromXml(xmlFilePath)
 // async function runScrape() {
 //   try {
 //     await scrapeHospitalDetails(
-//       "https://www.practo.com/bangalore/hospital/manipal-hospital-old-airport-road-1-630200"
+//       "https://www.practo.com/rajkot/hospital/sterling-hospital-raiya-1?referrer=hospital_listing"
 //     );
 //     process.exit(0);
 //   } catch (error) {
