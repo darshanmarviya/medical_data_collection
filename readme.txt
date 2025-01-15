@@ -1,4 +1,4 @@
-prakash.gujarati@atmiyauni.ac.in / prakash@vsc.edu.in
+node clinic6.js output-titan-india-clinic-profiles-11-sitemap/titan-india-clinic-profiles-11-sitemap-6.xmlprakash.gujarati@atmiyauni.ac.in / prakash@vsc.edu.in
 node clinic.js output-titan-india-clinic-profiles-2-sitemap/titan-india-clinic-profiles-2-sitemap-1.xml
 node clinic.js output-titan-india-clinic-profiles-2-sitemap/titan-india-clinic-profiles-2-sitemap-2.xml
 node clinic.js output-titan-india-clinic-profiles-2-sitemap/titan-india-clinic-profiles-2-sitemap-3.xml
