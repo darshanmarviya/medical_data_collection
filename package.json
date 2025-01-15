@@ -11,8 +11,11 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "mongoose": "^8.9.3",
+    "fs": "^0.0.1-security",
+    "mongoose": "^8.9.5",
+    "path": "^0.12.7",
     "puppeteer": "^23.11.1",
+    "sax": "^1.4.1",
     "xml2js": "^0.6.2"
   }
 }
